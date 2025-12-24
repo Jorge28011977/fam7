@@ -3,13 +3,16 @@ import sqlite3
 import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from backend import audit_engine
 from backend.audit_engine import init_db, create_work_order, update_work_order_arrival, calculate_penalty, get_sla
 
 class TestAuditEngine(unittest.TestCase):
 
     def setUp(self):
-        # Usar DB en memoria para tests
-        self.conn = sqlite3.connect(':memory:')
+        # Usar DB de archivo para tests
+        self.db_path = 'test_audit.db'
+        audit_engine.DB_PATH = self.db_path
+        self.conn = sqlite3.connect(self.db_path)
         c = self.conn.cursor()
         c.execute('''CREATE TABLE work_orders (
                         id INTEGER PRIMARY KEY,
@@ -32,6 +35,7 @@ class TestAuditEngine(unittest.TestCase):
 
     def tearDown(self):
         self.conn.close()
+        os.remove(self.db_path)
 
     def test_get_sla(self):
         sla = get_sla(1)

@@ -2,14 +2,13 @@ import time
 import json
 import sqlite3  # Simulando DB, en producción usar PostgreSQL
 from datetime import datetime, timedelta
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-import schedule
 import threading
+
+DB_PATH = 'audit.db'
 
 # Simulación de DB (en producción, usar psycopg2 para PostgreSQL)
 def init_db():
-    conn = sqlite3.connect('audit.db')
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS work_orders (
                     id INTEGER PRIMARY KEY,
@@ -33,7 +32,7 @@ def init_db():
     conn.close()
 
 def get_sla(provider_id):
-    conn = sqlite3.connect('audit.db')
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("SELECT response_time_hours, penalty_per_hour FROM slas WHERE provider_id = ?", (provider_id,))
     row = c.fetchone()
@@ -41,7 +40,7 @@ def get_sla(provider_id):
     return row if row else (4, 100.0)  # Default
 
 def create_work_order(event_id, provider_id):
-    conn = sqlite3.connect('audit.db')
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     opened_at = time.time()
     c.execute("INSERT INTO work_orders (event_id, provider_id, opened_at) VALUES (?, ?, ?)", (event_id, provider_id, opened_at))
@@ -52,21 +51,21 @@ def create_work_order(event_id, provider_id):
     return wo_id
 
 def update_work_order_arrival(wo_id, arrived_at):
-    conn = sqlite3.connect('audit.db')
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("UPDATE work_orders SET arrived_at = ? WHERE id = ?", (arrived_at, wo_id))
     conn.commit()
     conn.close()
 
 def close_work_order(wo_id, resolved_at):
-    conn = sqlite3.connect('audit.db')
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("UPDATE work_orders SET resolved_at = ?, status = 'closed' WHERE id = ?", (resolved_at, wo_id))
     conn.commit()
     conn.close()
 
 def calculate_penalty(wo_id):
-    conn = sqlite3.connect('audit.db')
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("SELECT opened_at, arrived_at, provider_id FROM work_orders WHERE id = ?", (wo_id,))
     row = c.fetchone()
@@ -81,7 +80,7 @@ def calculate_penalty(wo_id):
     if actual_response_hours > response_time_hours:
         delay_hours = actual_response_hours - response_time_hours
         penalty = delay_hours * penalty_per_hour
-        conn = sqlite3.connect('audit.db')
+        conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
         c.execute("UPDATE work_orders SET penalty = ? WHERE id = ?", (penalty, wo_id))
         conn.commit()
@@ -113,7 +112,14 @@ def close_if_ok(wo_id, ok_log_received):
 
 # Generar reporte mensual PDF
 def generate_monthly_report():
-    conn = sqlite3.connect('audit.db')
+    try:
+        from reportlab.lib.pagesizes import letter
+        from reportlab.pdfgen import canvas
+    except ImportError:
+        print("reportlab no instalado, no se puede generar PDF")
+        return
+
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     # Suma de penalizaciones por proveedor
     c.execute("SELECT provider_id, SUM(penalty) FROM work_orders WHERE strftime('%Y-%m', datetime(opened_at, 'unixepoch')) = strftime('%Y-%m', 'now') GROUP BY provider_id")
@@ -132,6 +138,11 @@ def generate_monthly_report():
 
 # Cron job para verificar SLAs y generar reportes
 def cron_jobs():
+    try:
+        import schedule
+    except ImportError:
+        print("schedule no instalado, cron no disponible")
+        return
     schedule.every().day.at("23:59").do(generate_monthly_report)
     # Otros checks
     while True:
