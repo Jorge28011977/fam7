@@ -1,0 +1,10 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const asset_controller_1 = require("../controllers/asset.controller");
+const auth_1 = require("../middlewares/auth");
+const router = (0, express_1.Router)();
+router.get('/', auth_1.protect, asset_controller_1.getAssets);
+router.get('/:id', auth_1.protect, asset_controller_1.getAssetById);
+router.patch('/:id/status', auth_1.protect, (0, auth_1.restrictTo)('ADMIN', 'TECHNICIAN'), asset_controller_1.updateAssetStatus);
+exports.default = router;

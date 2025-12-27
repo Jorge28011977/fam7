@@ -1,0 +1,120 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  AUDITOR
+  TECHNICIAN
+  BANK_MANAGER
+}
+
+enum AssetType {
+  ATM
+  RECYCLER
+  BILL_COUNTER
+  COIN_COUNTER
+}
+
+enum AssetStatus {
+  OPERATIONAL
+  WARNING
+  CRITICAL
+  MAINTENANCE
+  OUT_OF_SERVICE
+}
+
+enum TicketStatus {
+  OPEN
+  ASSIGNED
+  IN_PROGRESS
+  PENDING_VALIDATION
+  CLOSED
+}
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  password      String
+  name          String
+  role          Role      @default(BANK_MANAGER)
+  providerId    String?
+  provider      Provider? @relation(fields: [providerId], references: [id])
+  tickets       Ticket[]  @relation("AssignedTechnician")
+  auditsCreated AuditLog[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Provider {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  contactEmail String
+  phone       String?
+  users       User[]
+  assets      Asset[]  @relation("ProviderAssets")
+  tickets     Ticket[]
+  createdAt   DateTime @default(now())
+}
+
+model Asset {
+  id              String      @id @default(uuid())
+  serialNumber    String      @unique
+  model           String
+  brand           String
+  type            AssetType
+  status          AssetStatus @default(OPERATIONAL)
+  location        String
+  coordinates     String?     // "lat,lng"
+  lastMaintenance DateTime?
+  nextMaintenance DateTime?
+  healthScore     Int         @default(100) // 0-100 for predictive analysis
+  providerId      String?
+  provider        Provider?   @relation("ProviderAssets", fields: [providerId], references: [id])
+  tickets         Ticket[]
+  telemetryLogs   Telemetry[]
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+}
+
+model Ticket {
+  id              String       @id @default(uuid())
+  subject         String
+  description     String
+  status          TicketStatus @default(OPEN)
+  priority        Int          @default(1) // 1: Low, 4: Critical
+  assetId         String
+  asset           Asset        @relation(fields: [assetId], references: [id])
+  providerId      String
+  provider        Provider     @relation(fields: [providerId], references: [id])
+  technicianId    String?
+  technician      User?        @relation("AssignedTechnician", fields: [technicianId], references: [id])
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  closedAt        DateTime?
+  validationCode  String?      // QR or Geo token
+}
+
+model Telemetry {
+  id        String   @id @default(uuid())
+  assetId   String
+  asset     Asset    @relation(fields: [assetId], references: [id])
+  data      Json     // Flexible storage for sensor readings
+  timestamp DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  action    String
+  entity    String
+  entityId  String
+  details   String?
+  timestamp DateTime @default(now())
+}
